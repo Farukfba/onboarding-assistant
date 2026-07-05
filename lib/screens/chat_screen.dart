@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/chat_provider.dart';
 import '../models/chat_message.dart';
 import 'summary_screen.dart';
+import 'live_profile_sheet.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -35,9 +36,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
-  Future<void> _sendMessage() async {
-    final text = _inputController.text.trim();
+  Future<void> _sendMessage([String? quickReply]) async {
+    final text = quickReply ?? _inputController.text.trim();
     if (text.isEmpty) return;
+    if (!mounted) return;
     _inputController.clear();
     await ref.read(chatProvider.notifier).sendMessage(text);
     _scrollToBottom();
@@ -57,64 +59,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             builder: (_) => SummaryScreen(sessionId: state.sessionId!),
           ),
         ).then((_) {
-          // Reset when returning from summary
           _hasNavigated = false;
           ref.read(chatProvider.notifier).resetSession();
         });
       });
     }
 
-    // Scroll on new messages
     if (state.messages.isNotEmpty) {
       _scrollToBottom();
     }
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: Row(
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: Colors.white.withOpacity(0.2),
-              child: Text(
-                state.businessConfig?.assistantName.substring(0, 1) ?? 'A',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  state.businessConfig?.assistantName ?? 'Assistant',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-                Text(
-                  state.businessConfig?.businessName ?? '',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.white.withOpacity(0.75),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+      appBar: _buildAppBar(state, theme),
       body: Column(
         children: [
+          // Progress indicator
+          _buildProgressBar(state, theme),
+
           // Message list
           Expanded(
             child: state.messages.isEmpty
@@ -129,8 +91,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       if (index == state.messages.length && state.isLoading) {
                         return _buildTypingIndicator(theme);
                       }
-                      return _buildMessageBubble(
-                          state.messages[index], theme);
+                      final message = state.messages[index];
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildMessageBubble(message, theme),
+                          // Show quick reply chips below the last assistant message
+                          if (message.isAssistant &&
+                              message.quickReplies.isNotEmpty &&
+                              !state.isLoading &&
+                              state.status != 'complete')
+                            _buildQuickReplies(message.quickReplies, theme),
+                        ],
+                      );
                     },
                   ),
           ),
@@ -138,6 +111,193 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           // Input bar
           _buildInputBar(state, theme),
         ],
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar(ChatState state, ThemeData theme) {
+    final filledCount = state.liveProfile.filledCount;
+
+    return AppBar(
+      backgroundColor: theme.colorScheme.primary,
+      foregroundColor: Colors.white,
+      elevation: 0,
+      actions: [
+        if (!state.liveProfile.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => LiveProfileSheet.show(
+                context,
+                state.liveProfile,
+                filledCount,
+                state.totalSteps,
+              ),
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.person_outline, size: 14, color: Colors.white),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$filledCount/${state.totalSteps}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+      title: Row(
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: Colors.white.withOpacity(0.2),
+            child: Text(
+              state.businessConfig?.assistantName.substring(0, 1) ?? 'A',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                state.businessConfig?.assistantName ?? 'Assistant',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              Text(
+                state.businessConfig?.businessName ?? '',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.white.withOpacity(0.75),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressBar(ChatState state, ThemeData theme) {
+    final steps = state.businessConfig?.onboardingSteps ?? [];
+    final current = state.currentStep;
+    final total = state.totalSteps;
+    if (total == 0) return const SizedBox.shrink();
+
+    // Step label
+    final stepLabel = state.status == 'complete'
+        ? 'Complete! 🎉'
+        : current < steps.length
+            ? 'Step ${current + 1} of $total'
+            : 'Almost done...';
+
+    return Container(
+      color: theme.colorScheme.primary,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                stepLabel,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.white.withOpacity(0.85),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Text(
+                '${(state.progress * 100).round()}%',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.white.withOpacity(0.85),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Segmented step dots
+          Row(
+            children: List.generate(total, (i) {
+              final filled = i < current ||
+                  state.status == 'complete';
+              final active = i == current && state.status != 'complete';
+              return Expanded(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 400),
+                  curve: Curves.easeInOut,
+                  height: 4,
+                  margin: EdgeInsets.only(right: i < total - 1 ? 4 : 0),
+                  decoration: BoxDecoration(
+                    color: filled || active
+                        ? Colors.white
+                        : Colors.white.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickReplies(List<String> replies, ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 38, top: 6, bottom: 4),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: replies.map((reply) {
+          return GestureDetector(
+            onTap: () => _sendMessage(reply),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: theme.colorScheme.primary.withOpacity(0.3),
+                  width: 1,
+                ),
+              ),
+              child: Text(
+                reply,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: theme.colorScheme.onPrimaryContainer,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -185,7 +345,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ],
           Flexible(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: isUser
                     ? theme.colorScheme.primary
@@ -207,9 +368,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               child: Text(
                 message.content,
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: isUser
-                      ? Colors.white
-                      : theme.colorScheme.onSurface,
+                  color: isUser ? Colors.white : theme.colorScheme.onSurface,
                   height: 1.4,
                 ),
               ),
@@ -237,7 +396,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
           const SizedBox(width: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerHighest,
               borderRadius: const BorderRadius.only(
@@ -260,7 +420,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border(
-          top: BorderSide(color: theme.colorScheme.outlineVariant, width: 0.5),
+          top: BorderSide(
+              color: theme.colorScheme.outlineVariant, width: 0.5),
         ),
       ),
       child: Row(
@@ -311,7 +472,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   )
                 : IconButton(
                     key: const ValueKey('send'),
-                    onPressed: state.status == 'complete' ? null : _sendMessage,
+                    onPressed:
+                        state.status == 'complete' ? null : _sendMessage,
                     icon: const Icon(Icons.send_rounded),
                     style: IconButton.styleFrom(
                       backgroundColor: theme.colorScheme.primary,
@@ -355,7 +517,6 @@ class _TypingDotsState extends State<_TypingDots>
             ))
         .toList();
 
-    // Staggered start
     for (int i = 0; i < _controllers.length; i++) {
       Future.delayed(Duration(milliseconds: i * 150), () {
         if (mounted) {

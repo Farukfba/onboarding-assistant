@@ -59,18 +59,19 @@ class ApiService {
   }
 
   Future<SendMessageResult> sendMessage({
-    required String businessId,
-    required String? sessionId,
-    required String message,
-  }) async {
+  required String businessId,
+  required String? sessionId,
+  required String message,
+  String? email,
+}) async {
     try {
       final uri = Uri.parse('$kBackendUrl/api/chat');
       final body = jsonEncode({
         'business_id': businessId,
         'session_id': sessionId,
         'message': message,
+        if (email != null) 'email': email,
       });
-
       final response = await http.post(uri, headers: _headers, body: body);
 
       if (response.statusCode == 200) {
