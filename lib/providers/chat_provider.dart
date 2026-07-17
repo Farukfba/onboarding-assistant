@@ -87,6 +87,35 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
+  Future<Map<String, dynamic>?> checkForExistingSession() async {
+  try {
+    return await _api.fetchLatestSession(kBusinessId);
+  } catch (e) {
+    return null;
+  }
+}
+
+Future<void> resumeSession(String sessionId, BusinessConfig config) async {
+  state = state.copyWith(isLoading: true, clearError: true);
+  try {
+    final messages = await _api.fetchSessionMessages(sessionId);
+    final live = ProfileParser.parse(messages);
+    state = state.copyWith(
+      sessionId: sessionId,
+      businessConfig: config,
+      totalSteps: config.onboardingSteps.length,
+      currentStep: (messages.where((m) => m.isUser).length)
+          .clamp(0, config.onboardingSteps.length - 1),
+      messages: messages,
+      isLoading: false,
+      status: 'in_progress',
+      liveProfile: live,
+    );
+  } catch (e) {
+    state = state.copyWith(isLoading: false, error: e.toString());
+  }
+}
+
   Future<void> sendMessage(String content) async {
     if (content.trim().isEmpty) return;
     if (state.isLoading) return;
@@ -119,7 +148,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   businessId: kBusinessId,
   sessionId: state.sessionId,
   message: content.trim(),
-  email: 'farukbaliyu23@gmail.com', // swap with real email for demo
+  email: 'farukbaliyu23@gmail.com',
 );
 
       final newStep =

@@ -4,6 +4,7 @@ import '../providers/chat_provider.dart';
 import '../models/chat_message.dart';
 import 'summary_screen.dart';
 import 'live_profile_sheet.dart';
+import 'analytics_screen.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -116,88 +117,99 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   PreferredSizeWidget _buildAppBar(ChatState state, ThemeData theme) {
-    final filledCount = state.liveProfile.filledCount;
+  final filledCount = state.liveProfile.filledCount;
 
-    return AppBar(
-      backgroundColor: theme.colorScheme.primary,
-      foregroundColor: Colors.white,
-      elevation: 0,
-      actions: [
-        if (!state.liveProfile.isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap: () => LiveProfileSheet.show(
-                context,
-                state.liveProfile,
-                filledCount,
-                state.totalSteps,
+  return AppBar(
+    backgroundColor: theme.colorScheme.primary,
+    foregroundColor: Colors.white,
+    elevation: 0,
+    actions: [
+      if (!state.liveProfile.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(right: 4),
+          child: GestureDetector(
+            onTap: () => LiveProfileSheet.show(
+              context,
+              state.liveProfile,
+              filledCount,
+              state.totalSteps,
+            ),
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 10),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(20),
               ),
-              child: Container(
-                margin: const EdgeInsets.symmetric(vertical: 10),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.person_outline, size: 14, color: Colors.white),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$filledCount/${state.totalSteps}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.person_outline,
+                      size: 14, color: Colors.white),
+                  const SizedBox(width: 4),
+                  Text(
+                    '$filledCount/${state.totalSteps}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
-      ],
-      title: Row(
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: Colors.white.withOpacity(0.2),
-            child: Text(
-              state.businessConfig?.assistantName.substring(0, 1) ?? 'A',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
+        ),
+      IconButton(
+        icon: const Icon(Icons.bar_chart_rounded, color: Colors.white),
+        tooltip: 'Analytics',
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const AnalyticsScreen(),
           ),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                state.businessConfig?.assistantName ?? 'Assistant',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-              Text(
-                state.businessConfig?.businessName ?? '',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.white.withOpacity(0.75),
-                ),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
-    );
-  }
+    ],
+    title: Row(
+      children: [
+        CircleAvatar(
+          radius: 18,
+          backgroundColor: Colors.white.withOpacity(0.2),
+          child: Text(
+            state.businessConfig?.assistantName.substring(0, 1) ?? 'A',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              state.businessConfig?.assistantName ?? 'Assistant',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+            Text(
+              state.businessConfig?.businessName ?? '',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white.withOpacity(0.75),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildProgressBar(ChatState state, ThemeData theme) {
     final steps = state.businessConfig?.onboardingSteps ?? [];

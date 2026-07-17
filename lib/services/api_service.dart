@@ -4,6 +4,7 @@ import '../constants.dart';
 import '../models/business_config.dart';
 import '../models/chat_message.dart';
 import '../models/onboarding_profile.dart';
+import '../models/analytics_data.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -115,4 +116,57 @@ class ApiService {
       throw ApiException('Network error: Could not reach the server.');
     }
   }
+
+  Future<Map<String, dynamic>?> fetchLatestSession(String businessId) async {
+  try {
+    final uri = Uri.parse('$kBackendUrl/api/business/$businessId/latest-session');
+    final response = await http.get(uri, headers: _headers);
+    if (response.statusCode == 200) {
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      return json['session'] as Map<String, dynamic>?;
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+Future<List<ChatMessage>> fetchSessionMessages(String sessionId) async {
+  try {
+    final uri = Uri.parse('$kBackendUrl/api/sessions/$sessionId');
+    final response = await http.get(uri, headers: _headers);
+    if (response.statusCode == 200) {
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      final msgs = json['messages'] as List<dynamic>? ?? [];
+      return msgs.map((m) {
+        final map = m as Map<String, dynamic>;
+        return ChatMessage(
+          role: map['role'] == 'user'
+              ? MessageRole.user
+              : MessageRole.assistant,
+          content: map['content'] as String,
+        );
+      }).toList();
+    }
+    return [];
+  } catch (e) {
+    return [];
+  }
+}
+
+Future<AnalyticsData> fetchAnalytics(String businessId) async {
+  try {
+    final uri = Uri.parse('$kBackendUrl/api/business/$businessId/analytics');
+    final response = await http.get(uri, headers: _headers);
+    if (response.statusCode == 200) {
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      return AnalyticsData.fromJson(json);
+    }
+    throw ApiException('Failed to load analytics (${response.statusCode})');
+  } on ApiException {
+    rethrow;
+  } catch (e) {
+    throw ApiException('Network error: Could not reach the server.');
+  }
+}
 }

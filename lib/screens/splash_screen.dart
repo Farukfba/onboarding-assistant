@@ -32,25 +32,66 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   Future<void> _loadConfig() async {
-    await ref.read(chatProvider.notifier).loadBusinessConfig();
-    if (!mounted) return;
+  await ref.read(chatProvider.notifier).loadBusinessConfig();
+  if (!mounted) return;
 
-    final state = ref.read(chatProvider);
-    if (state.error != null) {
-      // Show error on splash — config failed
-      return;
-    }
+  final state = ref.read(chatProvider);
+  if (state.error != null) return;
 
-    // Navigate to chat
-    Navigator.of(context).pushReplacement(
-      PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const ChatScreen(),
-        transitionsBuilder: (_, animation, __, child) =>
-            FadeTransition(opacity: animation, child: child),
-        transitionDuration: const Duration(milliseconds: 400),
+  // Check for an existing incomplete session
+  final existing = await ref
+      .read(chatProvider.notifier)
+      .checkForExistingSession();
+
+  if (!mounted) return;
+
+  if (existing != null) {
+    // Show resume dialog
+    final shouldResume = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16)),
+        title: const Text('Welcome back!'),
+        content: Text(
+          'You have an unfinished onboarding session '
+          '(${existing['message_count']} messages). '
+          'Would you like to continue where you left off?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Start over'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Resume'),
+          ),
+        ],
       ),
     );
+
+    if (!mounted) return;
+
+    if (shouldResume == true) {
+      await ref.read(chatProvider.notifier).resumeSession(
+            existing['session_id'] as String,
+            state.businessConfig!,
+          );
+    }
   }
+
+  if (!mounted) return;
+  Navigator.of(context).pushReplacement(
+    PageRouteBuilder(
+      pageBuilder: (_, __, ___) => const ChatScreen(),
+      transitionsBuilder: (_, animation, __, child) =>
+          FadeTransition(opacity: animation, child: child),
+      transitionDuration: const Duration(milliseconds: 400),
+    ),
+  );
+}
 
   @override
   void dispose() {
